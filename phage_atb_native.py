@@ -19,12 +19,38 @@ class PhageATBApp(ctk.CTk):
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
+        # Define custom colors
+        self.colors = {
+            "bg_dark": "#0f172a",
+            "bg_card": "#1e293b",
+            "accent": "#3b82f6",
+            "success": "#10b981",
+            "text_main": "#f8fafc",
+            "text_dim": "#94a3b8",
+            "border": "#334155"
+        }
+
         # Global styles for Treeview
         style = ttk.Style()
         style.theme_use("clam")
-        style.configure("Treeview", background="#1e293b", foreground="white", fieldbackground="#1e293b", borderwidth=0, font=("Segoe UI", 10))
-        style.configure("Treeview.Heading", background="#334155", foreground="white", relief="flat", font=("Segoe UI", 10, "bold"))
-        style.map("Treeview", background=[('selected', '#3b82f6')])
+        style.configure("Treeview", 
+                        background=self.colors["bg_card"], 
+                        foreground=self.colors["text_main"], 
+                        fieldbackground=self.colors["bg_card"], 
+                        borderwidth=0, 
+                        font=("Segoe UI", 10),
+                        rowheight=30)
+        style.configure("Treeview.Heading", 
+                        background="#334155", 
+                        foreground="white", 
+                        relief="flat", 
+                        font=("Segoe UI", 10, "bold"))
+        style.map("Treeview", 
+                  background=[('selected', self.colors["accent"])])
+        
+        # Add alternating row colors
+        style.configure("Treeview", rowheight=35)
+        self.tree_tag_colors = {"even": "#1e293b", "odd": "#162031"}
 
         # Main layout
         self.grid_columnconfigure(0, weight=1)
@@ -95,11 +121,11 @@ class PhageATBApp(ctk.CTk):
         
         for i, (label, value) in enumerate(metrics):
             if label not in self.kpi_labels:
-                card = ctk.CTkFrame(self.kpi_frame, corner_radius=10, border_width=1, border_color="#334155")
-                card.grid(row=0, column=i, padx=5, sticky="nsew")
-                ctk.CTkLabel(card, text=label, font=ctk.CTkFont(size=12), text_color="#94a3b8").pack(pady=(5, 0))
-                val_lbl = ctk.CTkLabel(card, text=str(value), font=ctk.CTkFont(size=20, weight="bold"))
-                val_lbl.pack(pady=(0, 5))
+                card = ctk.CTkFrame(self.kpi_frame, corner_radius=12, border_width=2, border_color=self.colors["border"], fg_color=self.colors["bg_card"])
+                card.grid(row=0, column=i, padx=8, pady=10, sticky="nsew")
+                ctk.CTkLabel(card, text=label, font=ctk.CTkFont(size=12, weight="bold"), text_color=self.colors["text_dim"]).pack(pady=(12, 0))
+                val_lbl = ctk.CTkLabel(card, text=str(value), font=ctk.CTkFont(size=24, weight="bold"), text_color=self.colors["accent"])
+                val_lbl.pack(pady=(0, 12))
                 self.kpi_labels[label] = val_lbl
             else:
                 self.kpi_labels[label].configure(text=str(value))
@@ -204,12 +230,16 @@ class PhageATBApp(ctk.CTk):
             messagebox.showinfo("Ranking", "Нет данных для отображения")
             return
             
-        for _, row in df.head(int(self.rank_topn.get())).iterrows():
+        for i, row in df.head(int(self.rank_topn.get())).iterrows():
+            tag = "even" if i % 2 == 0 else "odd"
             self.tree.insert("", "end", values=(
-                row["phage"], row["antibiotic"], row["final_score"],
+                row["phage"], row["atb"] if "atb" in row else row["antibiotic"], row["final_score"],
                 row["relevance_score"], row["effect_score"], row["evidence_score"],
                 row["confidence_score"], row["synergy_prediction"]
-            ))
+            ), tags=(tag,))
+        
+        self.tree.tag_configure("even", background=self.tree_tag_colors["even"])
+        self.tree.tag_configure("odd", background=self.tree_tag_colors["odd"])
 
     def setup_audit_tab(self):
         self.tab_audit.grid_columnconfigure(0, weight=1)
