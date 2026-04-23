@@ -1,0 +1,24 @@
+# Питоновские кэши
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Папки сборки PyInstaller
+build/
+dist/
+*.spec
+
+# Локальные базы данных
+*.db
+
+# Файлы окружения
+.env
+.venv
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Логи
+*.log
