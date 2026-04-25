@@ -6,20 +6,21 @@ from typing import Dict, Iterable, List, Any
 import os
 import sys
 import shutil
+import requests
+import matplotlib.pyplot as plt
+import seaborn as sns
+import io
 
 # --- Configuration & Paths ---
-APP_TITLE = "PhageATB Pro v9.1.2"
-VERSION = "9.1.2"
+APP_TITLE = "PhageATB Pro v9.2.2"
+VERSION = "9.2.2"
 LAST_CHANGES = """
-Версия 9.1.2 (Design Update):
-- Полный редизайн интерфейса: новая цветовая палитра "Deep Space".
-- Улучшенные KPI-карточки с акцентными границами.
-- Стилизованные таблицы с чередованием строк и улучшенной читаемостью.
-- Оптимизированные отступы и группировка элементов управления.
+Версия 9.2.2 (UI Fix):
+- Исправлена проблема слияния текста заголовков таблиц при наведении курсора.
+- Улучшена контрастность и визуальный отклик интерфейса.
 
-Версия 9.1.1:
-- Исправлены проблемы с авторизацией Git.
-- Настроен .gitignore.
+Версия 9.2.1 (Hotfix):
+- Исправлена критическая ошибка запуска (TclError) из-за некорректных кодов клавиш.
 """
 
 if getattr(sys, 'frozen', False):
@@ -627,3 +628,55 @@ def is_empty() -> bool:
         return table_count("articles") == 0
     except Exception:
         return True
+
+# --- External API & Visualization ---
+def fetch_pubmed_metadata(doi: str) -> Dict[str, Any]:
+    """Получает метаданные статьи через CrossRef API (более надежно для DOI, чем чистый PubMed)"""
+    if not doi.strip():
+        return {}
+    
+    url = f"https://api.crossref.org/works/{doi}"
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json().get("message", {})
+            title = data.get("title", [""])[0]
+            authors = data.get("author", [])
+            author_str = authors[0].get("family", "") if authors else "Unknown"
+            year = data.get("published-print", data.get("published-online", {})).get("date-parts", [[0]])[0][0]
+            
+            return {
+                "reference": f"{author_str} et al. {title}",
+                "year": year,
+                "doi": doi
+            }
+    except Exception:
+        pass
+    return {}
+
+def generate_synergy_plot(df: pd.DataFrame) -> io.BytesIO:
+    """Генерирует график распределения синергии для текущего набора данных"""
+    if df.empty or "synergy_score" not in df.columns:
+        return None
+    
+    plt.figure(figsize=(10, 6))
+    sns.set_theme(style="darkgrid")
+    
+    # Создаем распределение
+    plot = sns.kdeplot(data=df, x="synergy_score", fill=True, color="#3b82f6", alpha=0.6)
+    plt.title("Распределение Synergy Score в текущей выборке", color="white", pad=20)
+    plt.xlabel("Synergy Score", color="white")
+    plt.ylabel("Плотность", color="white")
+    
+    # Настройка цветов для темной темы
+    plt.gcf().set_facecolor("#1e293b")
+    plot.set_facecolor("#1e293b")
+    plot.tick_params(colors="white")
+    for spine in plot.spines.values():
+        spine.set_color("#475569")
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", dpi=100, bbox_inches="tight", facecolor="#1e293b")
+    buf.seek(0)
+    plt.close()
+    return buf
