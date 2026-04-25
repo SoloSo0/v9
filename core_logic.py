@@ -10,17 +10,22 @@ import requests
 import matplotlib.pyplot as plt
 import seaborn as sns
 import io
+import re
 
 # --- Configuration & Paths ---
-APP_TITLE = "PhageATB Pro v9.2.2"
-VERSION = "9.2.2"
+APP_TITLE = "PhageATB Pro v9.4.2"
+VERSION = "9.4.2"
 LAST_CHANGES = """
-Версия 9.2.2 (UI Fix):
-- Исправлена проблема слияния текста заголовков таблиц при наведении курсора.
-- Улучшена контрастность и визуальный отклик интерфейса.
+Версия 9.4.2 (Ranking Logic Fix):
+- Исправлена логика Strict/Soft: теперь Strict гарантированно исключает резистентные АТБ из выдачи.
+- Исправлена инверсия штрафов: в режиме Soft штраф стал меньше, позволяя комбинациям подниматься выше.
 
-Версия 9.2.1 (Hotfix):
-- Исправлена критическая ошибка запуска (TclError) из-за некорректных кодов клавиш.
+Версия 9.4.1 (Smart Search Fix):
+
+Версия 9.3.0 (Feature Update):
+- Добавлен экспорт отчетов в Excel (.xlsx).
+- Улучшена интеграция с PubMed: автозагрузка абстрактов и авторов по DOI.
+- Добавлен калькулятор дозировок для фагов и антибиотиков.
 """
 
 if getattr(sys, 'frozen', False):
@@ -73,8 +78,34 @@ def query_df(sql: str, params: Iterable | None = None) -> pd.DataFrame:
         return pd.read_sql_query(sql, conn, params=list(params or []))
 
 def table_count(table: str) -> int:
-    with get_conn() as conn:
-        return int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+    with sqlite3.connect(DB_FILE) as conn:
+        return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+
+def get_unique_suggestions() -> Dict[str, List[str]]:
+    """Возвращает уникальные названия фагов, антибиотиков и патогенов для автодополнения"""
+    # Базовые наборы для того, чтобы поиск работал даже на пустой базе
+    suggestions = {
+        "phages": ["Phage T4", "Phage T7", "Phage lambda", "Pyo bacteriophage", "Sextaphage", "Intestiphage"],
+        "antibiotics": ["Ceftazidime", "Amoxicillin", "Ciprofloxacin", "Meropenem", "Gentamicin", "Vancomycin", "Imipenem", "Piperacillin", "Tazobactam"],
+        "pathogens": ["Pseudomonas aeruginosa", "Staphylococcus aureus", "Escherichia coli", "Klebsiella pneumoniae", "Acinetobacter baumannii", "Enterococcus faecalis"]
+    }
+    
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            # Фаги - объединяем с базовым набором
+            db_phages = [r[0] for r in conn.execute("SELECT DISTINCT name FROM therapies WHERE name != ''").fetchall()]
+            suggestions["phages"] = sorted(list(set(suggestions["phages"] + db_phages)))
+            
+            # Антибиотики
+            db_atbs = [r[0] for r in conn.execute("SELECT DISTINCT antibiotic FROM therapies WHERE antibiotic != ''").fetchall()]
+            suggestions["antibiotics"] = sorted(list(set(suggestions["antibiotics"] + db_atbs)))
+            
+            # Патогены
+            db_pathogens = [r[0] for r in conn.execute("SELECT DISTINCT pathogen FROM experiments WHERE pathogen != ''").fetchall()]
+            suggestions["pathogens"] = sorted(list(set(suggestions["pathogens"] + db_pathogens)))
+    except Exception:
+        pass
+    return suggestions
 
 def run_schema() -> None:
     with get_conn() as conn:
@@ -438,7 +469,10 @@ def score_row(row: pd.Series, patient: Dict) -> float:
     fit += 20 if norm(row["pathogen"]) == norm(patient.get("pathogen", "")) else 0
     fit += 10 if patient.get("growth_mode") != "Любой" and norm(row["growth_state"]) == norm(patient.get("growth_mode", "")) else 0
     fit += 12 if norm(row["antibiotic"]) in patient.get("sensitive", []) else 0
-    fit -= 18 if norm(row["antibiotic"]) in patient.get("resistant", []) and patient.get("resistant_mode") == "strict" else 45 if norm(row["antibiotic"]) in patient.get("resistant", []) else 0
+    # Strict: огромный штраф (если не отфильтровано раньше), Soft: умеренный штраф 18
+    if norm(row["antibiotic"]) in patient.get("resistant", []):
+        fit -= 100 if patient.get("resistant_mode") == "strict" else 18
+    
     fit += 8 if patient.get("wants_mdr") and as_num(row["mdr_relevant"]) > 0 else 0
     fit += 10 if patient.get("wants_xdr") and as_num(row["xdr_relevant"]) > 0 else 0
     fit += as_num(row["phage_active"]) * 8 + as_num(row["antibiotic_active"]) * 7 + as_num(row["direct_isolate_match"]) * 12 + as_num(row["species_match"]) * 6
@@ -492,6 +526,12 @@ def ranking_df(patient: Dict) -> pd.DataFrame:
         df = df[df["synergy_prediction"] != "antagonism"]
     if patient.get("only_active_pairs"):
         df = df[(df["phage_active"] > 0) & (df["antibiotic_active"] > 0)]
+    
+    # Режим Strict должен исключать резистентные АТБ всегда, если включен
+    if patient.get("resistant_mode") == "strict" and patient.get("resistant"):
+        res_list = patient.get("resistant", [])
+        df = df[~df["antibiotic"].apply(lambda x: norm(x) in res_list)]
+
     if patient.get("only_validated"):
         df = df[df["eligible_for_ranking"]]
     return df.sort_values(["eligible_for_ranking", "resistant_override", "final_score"], ascending=[False, True, False])
@@ -631,28 +671,62 @@ def is_empty() -> bool:
 
 # --- External API & Visualization ---
 def fetch_pubmed_metadata(doi: str) -> Dict[str, Any]:
-    """Получает метаданные статьи через CrossRef API (более надежно для DOI, чем чистый PubMed)"""
+    """Получает расширенные метаданные статьи через CrossRef и NCBI"""
     if not doi.strip():
         return {}
     
-    url = f"https://api.crossref.org/works/{doi}"
+    # 1. Пробуем CrossRef для базовых метаданных
+    clean_doi = doi.strip().replace("https://doi.org/", "")
+    url = f"https://api.crossref.org/works/{clean_doi}"
+    result = {
+        "reference": "",
+        "year": 0,
+        "doi": clean_doi,
+        "title": "",
+        "authors": "",
+        "abstract": ""
+    }
+    
     try:
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json().get("message", {})
-            title = data.get("title", [""])[0]
+            result["title"] = data.get("title", [""])[0]
             authors = data.get("author", [])
-            author_str = authors[0].get("family", "") if authors else "Unknown"
-            year = data.get("published-print", data.get("published-online", {})).get("date-parts", [[0]])[0][0]
+            author_list = [f"{a.get('family', '')} {a.get('given', '')[:1]}." for a in authors]
+            result["authors"] = ", ".join(author_list)
+            author_short = authors[0].get("family", "Unknown") if authors else "Unknown"
+            result["year"] = data.get("published-print", data.get("published-online", {})).get("date-parts", [[0]])[0][0]
+            result["reference"] = f"{author_short} et al. ({result['year']}) {result['title']}"
             
-            return {
-                "reference": f"{author_str} et al. {title}",
-                "year": year,
-                "doi": doi
-            }
+            # CrossRef иногда отдает абстракт в формате XML/JATS
+            abstract_raw = data.get("abstract", "")
+            if abstract_raw:
+                # Простая очистка от XML тегов
+                import re
+                result["abstract"] = re.sub('<[^<]+?>', '', abstract_raw).strip()
     except Exception:
         pass
-    return {}
+
+    # 2. Если абстракта нет, пробуем NCBI (нужен PMID)
+    if not result["abstract"]:
+        try:
+            # DOI -> PMID
+            conv_url = f"https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/?ids={clean_doi}&format=json&tool=PhageATB&email=phageatb@example.com"
+            conv_resp = requests.get(conv_url, timeout=5).json()
+            pmid = conv_resp.get("records", [{}])[0].get("pmid")
+            
+            if pmid:
+                efetch_url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id={pmid}&retmode=xml"
+                efetch_resp = requests.get(efetch_url, timeout=10).text
+                import re
+                abs_match = re.search(r'<AbstractText.*?>(.*?)</AbstractText>', efetch_resp, re.DOTALL)
+                if abs_match:
+                    result["abstract"] = re.sub('<[^<]+?>', '', abs_match.group(1)).strip()
+        except Exception:
+            pass
+            
+    return result
 
 def generate_synergy_plot(df: pd.DataFrame) -> io.BytesIO:
     """Генерирует график распределения синергии для текущего набора данных"""
@@ -680,3 +754,44 @@ def generate_synergy_plot(df: pd.DataFrame) -> io.BytesIO:
     buf.seek(0)
     plt.close()
     return buf
+
+def export_to_excel(df: pd.DataFrame, file_path: str) -> bool:
+    """Экспортирует DataFrame в красивый Excel-файл"""
+    try:
+        # Очищаем данные для экспорта
+        export_df = df.copy()
+        
+        # Переименовываем колонки для пользователя
+        columns_map = {
+            "phage": "Фаг",
+            "atb": "Антибиотик",
+            "antibiotic": "Антибиотик",
+            "final_score": "Итоговый балл",
+            "relevance_score": "Релевантность",
+            "effect_score": "Эффект",
+            "evidence_score": "Доказательность",
+            "confidence_score": "Доверие (%)",
+            "synergy_prediction": "Тип синергии",
+            "reference": "Источник",
+            "pathogen": "Возбудитель",
+            "growth_state": "Тип роста"
+        }
+        
+        # Оставляем только те колонки, которые есть в DF
+        available_cols = [c for c in columns_map.keys() if c in export_df.columns]
+        export_df = export_df[available_cols].rename(columns=columns_map)
+        
+        # Сохраняем
+        with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+            export_df.to_excel(writer, index=False, sheet_name='Результаты подбора')
+            
+            # Базовое форматирование (ширина колонок)
+            worksheet = writer.sheets['Результаты подбора']
+            for idx, col in enumerate(export_df.columns):
+                max_len = max(export_df[col].astype(str).map(len).max(), len(col)) + 2
+                worksheet.column_dimensions[chr(65 + idx)].width = min(max_len, 50)
+                
+        return True
+    except Exception as e:
+        print(f"Excel export error: {e}")
+        return False

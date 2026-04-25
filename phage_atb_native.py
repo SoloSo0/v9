@@ -5,6 +5,116 @@ from tkinter import ttk, messagebox, filedialog
 import sys
 import os
 from PIL import Image, ImageTk
+import tkinter as tk
+
+class AutocompleteEntry(ctk.CTkEntry):
+    def __init__(self, master, suggestions=None, **kwargs):
+        super().__init__(master, **kwargs)
+        self.suggestions = sorted(list(set(suggestions))) if suggestions else []
+        self._hits = []
+        self._hit_index = 0
+        self.listbox = None
+        self.bind('<KeyRelease>', self._on_keyrelease)
+        self.bind('<FocusOut>', self._hide_listbox)
+        self.bind('<Down>', self._on_down)
+        self.bind('<Up>', self._on_up)
+        self.bind('<Return>', self._on_enter)
+
+    def _on_keyrelease(self, event):
+        if event.keysym in ('Up', 'Down', 'Return', 'Escape', 'Tab'):
+            return
+            
+        value = self.get()
+        if not value:
+            self._hide_listbox()
+            return
+            
+        # Для полей с запятыми (например, список АТБ) берем последнее слово
+        if ',' in value:
+            parts = value.split(',')
+            current_term = parts[-1].strip().lower()
+            prefix = ",".join(parts[:-1]) + ", "
+        else:
+            current_term = value.strip().lower()
+            prefix = ""
+
+        if not current_term:
+            self._hide_listbox()
+            return
+
+        # Fuzzy search: ищем вхождение подстроки в любом месте
+        hits = [s for s in self.suggestions if current_term in s.lower()]
+        
+        # Сортируем: сначала те, что начинаются на current_term, потом остальные
+        hits.sort(key=lambda x: (not x.lower().startswith(current_term), x.lower()))
+        
+        self._show_listbox(hits, prefix)
+
+    def _show_listbox(self, hits, prefix):
+        self._current_prefix = prefix # Сохраняем префикс для метода _on_select
+        if not hits:
+            self._hide_listbox()
+            return
+            
+        if not hasattr(self, 'listbox_win') or not self.listbox_win:
+            # Создаем плавающее окно для списка
+            self.listbox_win = tk.Toplevel(self.winfo_toplevel())
+            self.listbox_win.withdraw()
+            self.listbox_win.overrideredirect(True)
+            self.listbox_win.attributes("-topmost", True)
+            self.listbox = tk.Listbox(self.listbox_win, bg="#2d2d2d", fg="white", 
+                                    selectbackground="#005a9e", font=("Segoe UI Variable Text", 10),
+                                    borderwidth=0, highlightthickness=1, highlightbackground="#3d3d3d")
+            self.listbox.pack(fill="both", expand=True)
+            self.listbox.bind('<ButtonRelease-1>', self._on_select)
+            
+        self.listbox.delete(0, "end")
+        for hit in hits[:10]: # Ограничиваем 10 подсказками
+            self.listbox.insert("end", hit)
+            
+        # Позиционируем окно под Entry
+        self.update_idletasks()
+        x = self.winfo_rootx()
+        y = self.winfo_rooty() + self.winfo_height()
+        w = self.winfo_width()
+        
+        # Высота зависит от количества элементов
+        h = min(len(hits), 10) * 25
+        self.listbox_win.geometry(f"{w}x{h}+{x}+{y}")
+        self.listbox_win.deiconify()
+        self.listbox_win.lift()
+
+    def _hide_listbox(self, event=None):
+        if hasattr(self, 'listbox_win') and self.listbox_win:
+            # Небольшая задержка, чтобы успел сработать клик по списку
+            self.after(200, self.listbox_win.withdraw)
+
+    def _on_select(self, event=None):
+        if self.listbox.curselection():
+            selection = self.listbox.get(self.listbox.curselection())
+            prefix = getattr(self, '_current_prefix', "")
+            self.delete(0, "end")
+            self.insert(0, prefix + selection)
+            self.focus_set() # Возвращаем фокус в поле ввода
+            self.icursor("end") # Курсор в конец
+            self.listbox_win.withdraw()
+
+    def _on_down(self, event):
+        if self.listbox and self.listbox.winfo_viewable():
+            self.listbox.focus_set()
+            self.listbox.selection_set(0)
+            return "break"
+
+    def _on_up(self, event):
+        if self.listbox and self.listbox.winfo_viewable():
+            self.listbox.focus_set()
+            self.listbox.selection_set("end")
+            return "break"
+
+    def _on_enter(self, event):
+        if hasattr(self, 'listbox_win') and self.listbox_win.winfo_viewable():
+            self._on_select()
+            return "break"
 
 class PhageATBApp(ctk.CTk):
     def __init__(self):
@@ -12,6 +122,7 @@ class PhageATBApp(ctk.CTk):
 
         # Initialize core
         core.run_schema()
+        self.suggestions = core.get_unique_suggestions()
 
         self.title(core.APP_TITLE)
         self.geometry("1400x900")
@@ -77,6 +188,7 @@ class PhageATBApp(ctk.CTk):
         self.tab_audit = self.tabview.add("Аудит")
         self.tab_consensus = self.tabview.add("Консенсус")
         self.tab_analytics = self.tabview.add("Аналитика")
+        self.tab_calc = self.tabview.add("Калькулятор")
         self.tab_input = self.tabview.add("Ввод данных")
         self.tab_import = self.tabview.add("Импорт / Миграция")
         self.tab_about = self.tabview.add("О программе")
@@ -86,6 +198,7 @@ class PhageATBApp(ctk.CTk):
         self.setup_audit_tab()
         self.setup_consensus_tab()
         self.setup_analytics_tab()
+        self.setup_calc_tab()
         self.setup_input_tab()
         self.setup_import_tab()
         self.setup_about_tab()
@@ -286,7 +399,7 @@ class PhageATBApp(ctk.CTk):
         # Grid for filters
         # Row 0
         ctk.CTkLabel(self.filters_frame, text="Возбудитель:", font=("Segoe UI Variable Text", 10)).grid(row=0, column=0, padx=10, pady=10, sticky="e")
-        self.rank_pathogen = ctk.CTkEntry(self.filters_frame, width=220, corner_radius=8)
+        self.rank_pathogen = AutocompleteEntry(self.filters_frame, suggestions=self.suggestions["pathogens"], width=220, corner_radius=8)
         self.rank_pathogen.insert(0, "Pseudomonas aeruginosa")
         self.rank_pathogen.grid(row=0, column=1, padx=10, pady=10)
 
@@ -301,12 +414,12 @@ class PhageATBApp(ctk.CTk):
 
         # Row 1
         ctk.CTkLabel(self.filters_frame, text="Sensitive АТБ:", font=("Segoe UI Variable Text", 10)).grid(row=1, column=0, padx=10, pady=10, sticky="e")
-        self.rank_sensitive = ctk.CTkEntry(self.filters_frame, width=220, corner_radius=8)
+        self.rank_sensitive = AutocompleteEntry(self.filters_frame, suggestions=self.suggestions["antibiotics"], width=220, corner_radius=8)
         self.rank_sensitive.insert(0, "Ceftazidime")
         self.rank_sensitive.grid(row=1, column=1, padx=10, pady=10)
 
         ctk.CTkLabel(self.filters_frame, text="Resistant АТБ:", font=("Segoe UI Variable Text", 10)).grid(row=1, column=2, padx=10, pady=10, sticky="e")
-        self.rank_resistant = ctk.CTkEntry(self.filters_frame, width=200, corner_radius=8)
+        self.rank_resistant = AutocompleteEntry(self.filters_frame, suggestions=self.suggestions["antibiotics"], width=200, corner_radius=8)
         self.rank_resistant.grid(row=1, column=3, padx=10, pady=10)
 
         self.rank_res_mode = ctk.CTkSegmentedButton(self.filters_frame, values=["strict", "soft"], corner_radius=8, selected_color=self.colors["accent"])
@@ -326,7 +439,11 @@ class PhageATBApp(ctk.CTk):
         self.rank_active.grid(row=2, column=3, padx=10, pady=10)
 
         self.run_btn = ctk.CTkButton(self.filters_frame, text="РАССЧИТАТЬ RANKING v9", command=self.run_ranking, font=("Segoe UI Variable Display", 12, "bold"), corner_radius=8, fg_color=self.colors["accent"], hover_color="#005a9e", text_color="#000000")
-        self.run_btn.grid(row=2, column=4, columnspan=2, padx=10, pady=10, sticky="ew")
+        self.run_btn.grid(row=2, column=4, padx=10, pady=10, sticky="ew")
+
+        self.export_btn = ctk.CTkButton(self.filters_frame, text="ЭКСПОРТ EXCEL", command=self.export_ranking, font=("Segoe UI Variable Display", 12, "bold"), corner_radius=8, fg_color=self.colors["success"], hover_color="#2d7a26", text_color="#000000")
+        self.export_btn.grid(row=2, column=5, padx=10, pady=10, sticky="ew")
+        self.export_btn.configure(state="disabled")
 
         # Table frame
         self.table_frame = ctk.CTkFrame(self.tab_ranking)
@@ -370,12 +487,14 @@ class PhageATBApp(ctk.CTk):
             "only_validated": self.rank_validated.get(),
         }
         
-        df = core.ranking_df(patient)
-        if df.empty:
+        self.last_ranking_df = core.ranking_df(patient)
+        if self.last_ranking_df.empty:
             messagebox.showinfo("Ranking", "Нет данных для отображения")
+            self.export_btn.configure(state="disabled")
             return
             
-        for i, row in df.head(int(self.rank_topn.get())).iterrows():
+        self.export_btn.configure(state="normal")
+        for i, row in self.last_ranking_df.head(int(self.rank_topn.get())).iterrows():
             tag = "even" if i % 2 == 0 else "odd"
             self.tree.insert("", "end", values=(
                 row["phage"], row["atb"] if "atb" in row else row["antibiotic"], row["final_score"],
@@ -385,6 +504,17 @@ class PhageATBApp(ctk.CTk):
         
         self.tree.tag_configure("even", background=self.tree_tag_colors["even"])
         self.tree.tag_configure("odd", background=self.tree_tag_colors["odd"])
+
+    def export_ranking(self):
+        if not hasattr(self, 'last_ranking_df') or self.last_ranking_df.empty:
+            return
+        
+        path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")])
+        if path:
+            if core.export_to_excel(self.last_ranking_df.head(int(self.rank_topn.get())), path):
+                messagebox.showinfo("Экспорт", "Отчет успешно сохранен!")
+            else:
+                messagebox.showerror("Ошибка", "Не удалось сохранить отчет.")
 
     def setup_audit_tab(self):
         self.tab_audit.grid_columnconfigure(0, weight=1)
@@ -462,6 +592,93 @@ class PhageATBApp(ctk.CTk):
             self.plot_label.configure(image=ctk_img, text="")
             self.plot_label.image = ctk_img # сохраняем ссылку
 
+    def setup_calc_tab(self):
+        self.tab_calc.grid_columnconfigure((0, 1), weight=1)
+        
+        # --- Phage Calculator ---
+        phage_frame = ctk.CTkFrame(self.tab_calc, corner_radius=15, border_width=1, border_color=self.colors["border"])
+        phage_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+        
+        ctk.CTkLabel(phage_frame, text="Калькулятор Бактериофагов", font=ctk.CTkFont(size=16, weight="bold"), text_color=self.colors["accent"]).pack(pady=10)
+        
+        self.calc_phage_entries = {}
+        phage_fields = [
+            ("Концентрация бактерий (CFU/ml):", "cfu", "1e8"),
+            ("Целевой MOI:", "moi", "1"),
+            ("Объем среды (ml):", "vol", "10"),
+            ("Концентрация стока фага (PFU/ml):", "stock", "1e10")
+        ]
+        
+        for label, key, default in phage_fields:
+            ctk.CTkLabel(phage_frame, text=label).pack(pady=(5, 0))
+            entry = ctk.CTkEntry(phage_frame, width=200)
+            entry.insert(0, default)
+            entry.pack(pady=(0, 5))
+            self.calc_phage_entries[key] = entry
+            
+        self.phage_res_label = ctk.CTkLabel(phage_frame, text="Нужный объем фага: ---", font=ctk.CTkFont(weight="bold"))
+        self.phage_res_label.pack(pady=20)
+        
+        ctk.CTkButton(phage_frame, text="Рассчитать фаг", command=self.calculate_phage, fg_color=self.colors["accent"], text_color="#000000").pack(pady=10)
+        
+        # --- ATB Calculator ---
+        atb_frame = ctk.CTkFrame(self.tab_calc, corner_radius=15, border_width=1, border_color=self.colors["border"])
+        atb_frame.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
+        
+        ctk.CTkLabel(atb_frame, text="Калькулятор Антибиотиков", font=ctk.CTkFont(size=16, weight="bold"), text_color=self.colors["success"]).pack(pady=10)
+        
+        self.calc_atb_entries = {}
+        atb_fields = [
+            ("Целевая концентрация (µg/ml):", "target", "16"),
+            ("Концентрация стока (mg/ml):", "stock", "10"),
+            ("Объем среды (ml):", "vol", "10")
+        ]
+        
+        for label, key, default in atb_fields:
+            ctk.CTkLabel(atb_frame, text=label).pack(pady=(5, 0))
+            entry = ctk.CTkEntry(atb_frame, width=200)
+            entry.insert(0, default)
+            entry.pack(pady=(0, 5))
+            self.calc_atb_entries[key] = entry
+            
+        self.atb_res_label = ctk.CTkLabel(atb_frame, text="Нужный объем АТБ: ---", font=ctk.CTkFont(weight="bold"))
+        self.atb_res_label.pack(pady=20)
+        
+        ctk.CTkButton(atb_frame, text="Рассчитать АТБ", command=self.calculate_atb, fg_color=self.colors["success"], text_color="#000000").pack(pady=10)
+
+    def calculate_phage(self):
+        try:
+            cfu = float(self.calc_phage_entries["cfu"].get())
+            moi = float(self.calc_phage_entries["moi"].get())
+            vol = float(self.calc_phage_entries["vol"].get())
+            stock = float(self.calc_phage_entries["stock"].get())
+            
+            # Нужное кол-во фагов = CFU * MOI * Volume
+            needed_pfu = cfu * moi * vol
+            needed_vol_ml = needed_pfu / stock
+            needed_vol_mkl = needed_vol_ml * 1000
+            
+            self.phage_res_label.configure(text=f"Нужный объем фага: {needed_vol_mkl:.2f} µl")
+        except Exception as e:
+            messagebox.showerror("Ошибка", "Проверьте корректность введенных чисел (используйте 1e8 для экспоненциальной записи)")
+
+    def calculate_atb(self):
+        try:
+            target = float(self.calc_atb_entries["target"].get()) # µg/ml
+            stock = float(self.calc_atb_entries["stock"].get()) # mg/ml = 1000 µg/ml
+            vol = float(self.calc_atb_entries["vol"].get()) # ml
+            
+            # C1 * V1 = C2 * V2
+            # V1 = (C2 * V2) / C1
+            # C2 = target (µg/ml), V2 = vol (ml), C1 = stock * 1000 (µg/ml)
+            
+            needed_vol_ml = (target * vol) / (stock * 1000)
+            needed_vol_mkl = needed_vol_ml * 1000
+            
+            self.atb_res_label.configure(text=f"Нужный объем АТБ: {needed_vol_mkl:.2f} µl")
+        except Exception as e:
+            messagebox.showerror("Ошибка", "Проверьте корректность введенных чисел")
+
     def setup_input_tab(self):
         self.tab_input.grid_columnconfigure(0, weight=1)
         self.input_form = ctk.CTkFrame(self.tab_input)
@@ -473,7 +690,8 @@ class PhageATBApp(ctk.CTk):
             ("Возбудитель:", "pathogen"),
             ("Фаг / Коктейль:", "phage"),
             ("Антибиотик:", "atb"),
-            ("Synergy Score (0-100):", "score")
+            ("Synergy Score (0-100):", "score"),
+            ("Заметки / Абстракт:", "notes")
         ]
         
         self.inputs = {}
@@ -483,8 +701,22 @@ class PhageATBApp(ctk.CTk):
             frame = ctk.CTkFrame(self.input_form, fg_color="transparent")
             frame.grid(row=i, column=1, padx=10, pady=5, sticky="w")
             
-            entry = ctk.CTkEntry(frame, width=300)
-            entry.pack(side="left")
+            if key == "notes":
+                entry = ctk.CTkTextbox(frame, width=400, height=100)
+                entry.pack(side="left")
+            elif key == "pathogen":
+                entry = AutocompleteEntry(frame, suggestions=self.suggestions["pathogens"], width=400)
+                entry.pack(side="left")
+            elif key == "phage":
+                entry = AutocompleteEntry(frame, suggestions=self.suggestions["phages"], width=400)
+                entry.pack(side="left")
+            elif key == "atb":
+                entry = AutocompleteEntry(frame, suggestions=self.suggestions["antibiotics"], width=400)
+                entry.pack(side="left")
+            else:
+                entry = ctk.CTkEntry(frame, width=400)
+                entry.pack(side="left")
+            
             self.inputs[key] = entry
             
             if key == "ref":
@@ -499,21 +731,32 @@ class PhageATBApp(ctk.CTk):
             return
             
         metadata = core.fetch_pubmed_metadata(doi)
-        if metadata:
+        if metadata and metadata.get("reference"):
             self.inputs["ref"].delete(0, "end")
             self.inputs["ref"].insert(0, metadata["reference"])
             self.inputs["year"].delete(0, "end")
             self.inputs["year"].insert(0, str(metadata["year"]))
+            
+            # Добавляем абстракт в заметки, если он есть
+            if metadata.get("abstract"):
+                self.inputs["notes"].delete("1.0", "end")
+                self.inputs["notes"].insert("1.0", metadata["abstract"])
+                
             messagebox.showinfo("PubMed", "Данные успешно получены!")
         else:
             messagebox.showerror("PubMed", "Не удалось найти статью по этому DOI")
 
     def save_input(self):
         try:
-            art_id = core.create_article(self.inputs["ref"].get(), int(self.inputs["year"].get() or 2026), "", "in vitro", "")
+            ref = self.inputs["ref"].get()
+            year = int(self.inputs["year"].get() or 2026)
+            notes = self.inputs["notes"].get("1.0", "end-1c")
+            
+            art_id = core.create_article(ref, year, "", "in vitro", notes)
             exp_id = core.create_experiment(art_id, self.inputs["pathogen"].get(), "strain X", "source", "planktonic", "model", 0, 1, 1, 0, 1, 1, 0)
             ther_id = core.create_therapy(self.inputs["phage"].get(), self.inputs["atb"].get(), "", "", 1, 5, 0)
             core.create_interpretation(exp_id, ther_id, 3, 3, float(self.inputs["score"].get() or 50), "PAS", 0, 0, 1, 1, 0, "Manual input")
+            
             messagebox.showinfo("Успех", "Запись сохранена!")
             self.refresh_kpis()
         except Exception as e:

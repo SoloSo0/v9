@@ -2,3 +2,8 @@ pandas
 streamlit
 pyinstaller
 customtkinter
+openpyxl
+requests
+Pillow
+matplotlib
+seaborn
