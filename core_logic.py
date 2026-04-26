@@ -11,21 +11,19 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import io
 import re
+import logging
+import traceback
 
 # --- Configuration & Paths ---
-APP_TITLE = "PhageATB Pro v9.4.2"
-VERSION = "9.4.2"
+APP_TITLE = "PhageATB Pro v9.5.0"
+VERSION = "9.5.0"
 LAST_CHANGES = """
+Версия 9.5.0 (Reliability Update):
+- Внедрена система логирования (файл app.log).
+- Добавлены модульные тесты для проверки алгоритмов ранжирования.
+- Улучшена обработка ошибок при работе с базой данных и сетью.
+
 Версия 9.4.2 (Ranking Logic Fix):
-- Исправлена логика Strict/Soft: теперь Strict гарантированно исключает резистентные АТБ из выдачи.
-- Исправлена инверсия штрафов: в режиме Soft штраф стал меньше, позволяя комбинациям подниматься выше.
-
-Версия 9.4.1 (Smart Search Fix):
-
-Версия 9.3.0 (Feature Update):
-- Добавлен экспорт отчетов в Excel (.xlsx).
-- Улучшена интеграция с PubMed: автозагрузка абстрактов и авторов по DOI.
-- Добавлен калькулятор дозировок для фагов и антибиотиков.
 """
 
 if getattr(sys, 'frozen', False):
@@ -33,9 +31,23 @@ if getattr(sys, 'frozen', False):
     EXE_DIR = Path(sys.executable).parent
     APP_DIR = Path(sys._MEIPASS)
     DB_FILE = EXE_DIR / "phage_atb_v9.db"
+    LOG_FILE = EXE_DIR / "app.log"
 else:
     APP_DIR = Path(__file__).resolve().parent
     DB_FILE = APP_DIR / "phage_atb_v9.db"
+    LOG_FILE = APP_DIR / "app.log"
+
+# --- Logging Setup ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger("CoreLogic")
+logger.info(f"Starting {APP_TITLE} (v{VERSION})")
 
 LEGACY_TEMPLATE = APP_DIR / "phage_antibiotic_template_v4.csv"
 PREV_DBS = [
@@ -73,9 +85,13 @@ def get_conn() -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
-def query_df(sql: str, params: Iterable | None = None) -> pd.DataFrame:
-    with get_conn() as conn:
-        return pd.read_sql_query(sql, conn, params=list(params or []))
+def query_df(sql: str, params: Iterable = ()) -> pd.DataFrame:
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            return pd.read_sql_query(sql, conn, params=params)
+    except Exception as e:
+        logger.error(f"Query failed: {sql} with {params}. Error: {e}")
+        return pd.DataFrame()
 
 def table_count(table: str) -> int:
     with sqlite3.connect(DB_FILE) as conn:
@@ -108,9 +124,7 @@ def get_unique_suggestions() -> Dict[str, List[str]]:
     return suggestions
 
 def run_schema() -> None:
-    with get_conn() as conn:
-        conn.executescript(
-            """
+    schema = """
             CREATE TABLE IF NOT EXISTS articles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 article_key TEXT UNIQUE NOT NULL,
@@ -196,7 +210,12 @@ def run_schema() -> None:
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             """
-        )
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.executescript(schema)
+            logger.info("Database schema verified/updated.")
+    except Exception as e:
+        logger.error(f"Schema run failed: {e}\n{traceback.format_exc()}")
 
 # --- Normalization Helpers ---
 def norm(value) -> str:

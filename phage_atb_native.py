@@ -6,6 +6,20 @@ import sys
 import os
 from PIL import Image, ImageTk
 import tkinter as tk
+import logging
+import traceback
+
+# --- Logging Setup ---
+logger = logging.getLogger("NativeApp")
+
+def handle_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+    messagebox.showerror("Critical Error", f"An unexpected error occurred:\n{exc_value}\n\nCheck app.log for details.")
+
+sys.excepthook = handle_exception
 
 class AutocompleteEntry(ctk.CTkEntry):
     def __init__(self, master, suggestions=None, **kwargs):
