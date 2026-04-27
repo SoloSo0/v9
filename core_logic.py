@@ -15,15 +15,15 @@ import logging
 import traceback
 
 # --- Configuration & Paths ---
-APP_TITLE = "PhageATB Pro v9.5.0"
-VERSION = "9.5.0"
+APP_TITLE = "PhageATB Pro v9.7.0"
+VERSION = "9.7.0"
 LAST_CHANGES = """
-Версия 9.5.0 (Reliability Update):
-- Внедрена система логирования (файл app.log).
-- Добавлены модульные тесты для проверки алгоритмов ранжирования.
-- Улучшена обработка ошибок при работе с базой данных и сетью.
+Версия 9.7.0 (Global Search Update):
+- Внедрен полнотекстовый поиск (FTS5) по статьям и заметкам.
+- Добавлена функция глобального поиска по ключевым словам.
+- Оптимизирована синхронизация между поисковыми индексами и основной БД.
 
-Версия 9.4.2 (Ranking Logic Fix):
+Версия 9.6.0 (Database Optimization):
 """
 
 if getattr(sys, 'frozen', False):
@@ -32,10 +32,29 @@ if getattr(sys, 'frozen', False):
     APP_DIR = Path(sys._MEIPASS)
     DB_FILE = EXE_DIR / "phage_atb_v9.db"
     LOG_FILE = EXE_DIR / "app.log"
+    BACKUP_DIR = EXE_DIR / "backups"
 else:
     APP_DIR = Path(__file__).resolve().parent
     DB_FILE = APP_DIR / "phage_atb_v9.db"
     LOG_FILE = APP_DIR / "app.log"
+    BACKUP_DIR = APP_DIR / "backups"
+
+# --- Backup Logic ---
+def backup_db():
+    try:
+        if DB_FILE.exists():
+            BACKUP_DIR.mkdir(exist_ok=True)
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = BACKUP_DIR / f"phage_atb_v9_backup_{timestamp}.db"
+            shutil.copy2(DB_FILE, backup_path)
+            # Keep only last 5 backups
+            backups = sorted(list(BACKUP_DIR.glob("*.db")), key=os.path.getmtime)
+            while len(backups) > 5:
+                os.remove(backups.pop(0))
+            logger.info(f"Database backup created: {backup_path.name}")
+    except Exception as e:
+        logger.error(f"Backup failed: {e}")
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -209,11 +228,53 @@ def run_schema() -> None:
                 is_blocking INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
+            
+            -- Оптимизация: Индексы для ускорения поиска и ранжирования
+            CREATE INDEX IF NOT EXISTS idx_experiments_pathogen ON experiments(pathogen);
+            CREATE INDEX IF NOT EXISTS idx_therapies_phage ON therapies(phage);
+            CREATE INDEX IF NOT EXISTS idx_therapies_antibiotic ON therapies(antibiotic);
+            CREATE INDEX IF NOT EXISTS idx_interpretations_exp_therapy ON outcome_interpretations(experiment_id, therapy_id);
+
+            -- FTS5: Виртуальная таблица для полнотекстового поиска по статьям
+            CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
+                article_id UNINDEXED,
+                reference,
+                doi,
+                notes,
+                content='articles',
+                content_rowid='id'
+            );
+
+            -- Триггеры для автоматического обновления FTS индекса
+            CREATE TRIGGER IF NOT EXISTS articles_ai AFTER INSERT ON articles BEGIN
+                INSERT INTO articles_fts(article_id, reference, doi, notes)
+                VALUES (new.id, new.reference, new.doi, new.notes);
+            END;
+            CREATE TRIGGER IF NOT EXISTS articles_ad AFTER DELETE ON articles BEGIN
+                INSERT INTO articles_fts(articles_fts, article_id, reference, doi, notes)
+                VALUES('delete', old.id, old.reference, old.doi, old.notes);
+            END;
+            CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
+                INSERT INTO articles_fts(articles_fts, article_id, reference, doi, notes)
+                VALUES('delete', old.id, old.reference, old.doi, old.notes);
+                INSERT INTO articles_fts(article_id, reference, doi, notes)
+                VALUES (new.id, new.reference, new.doi, new.notes);
+            END;
             """
     try:
+        backup_db()
         with sqlite3.connect(DB_FILE) as conn:
+            # Повышение надежности и производительности
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA synchronous=NORMAL;")
             conn.executescript(schema)
-            logger.info("Database schema verified/updated.")
+            
+            # Первичная инициализация FTS, если она пуста
+            fts_count = conn.execute("SELECT count(*) FROM articles_fts").fetchone()[0]
+            if fts_count == 0:
+                conn.execute("INSERT INTO articles_fts(article_id, reference, doi, notes) SELECT id, reference, doi, notes FROM articles")
+            
+            logger.info("Database schema verified/updated. WAL mode and FTS5 enabled.")
     except Exception as e:
         logger.error(f"Schema run failed: {e}\n{traceback.format_exc()}")
 
@@ -563,6 +624,19 @@ def audit_df() -> pd.DataFrame:
     df["critical_flags"] = flags.apply(lambda item: " | ".join(item["critical"]))
     df["warning_flags"] = flags.apply(lambda item: " | ".join(item["warnings"]))
     return df[["interpretation_id", "record_status", "reference", "pathogen", "phage", "antibiotic", "confidence_score", "evidence_level", "quality_score", "synergy_score", "critical_flags", "warning_flags"]].sort_values(["record_status", "confidence_score"], ascending=[True, True])
+
+def global_search_articles(query: str) -> pd.DataFrame:
+    """Полнотекстовый поиск по статьям (FTS5)"""
+    if not query.strip():
+        return pd.DataFrame()
+    sql = """
+        SELECT a.* 
+        FROM articles a
+        JOIN articles_fts f ON f.article_id = a.id
+        WHERE articles_fts MATCH ?
+        ORDER BY rank
+    """
+    return query_df(sql, [query])
 
 def consensus_df() -> pd.DataFrame:
     df = ranking_base_df()
