@@ -15,9 +15,14 @@ import logging
 import traceback
 
 # --- Configuration & Paths ---
-APP_TITLE = "PhageATB Pro v9.8.3"
-VERSION = "9.8.3"
+APP_TITLE = "PhageATB Pro v9.9.0"
+VERSION = "9.9.0"
+
 LAST_CHANGES = """
+Версия 9.9.0 (Multi-language Support):
+- Добавлен переключатель языков (RU/EN) в шапку приложения.
+- Полный перевод интерфейса (кнопки, таблицы, вкладки, сообщения).
+
 Версия 9.8.3 (Soft Mode Visual Fix):
 - Принудительное переопределение цвета на красный для резистентных вариантов.
 - Добавлена иконка ⚠️ и пометка (R) к названию антибиотика для максимальной наглядности.
@@ -546,7 +551,7 @@ def ranking_eligibility(row: pd.Series, patient: Dict) -> tuple[bool, str]:
 def score_row(row: pd.Series, patient: Dict) -> float:
     fit = 0.0
     fit += 20 if norm(row["pathogen"]) == norm(patient.get("pathogen", "")) else 0
-    fit += 10 if patient.get("growth_mode") != "Любой" and norm(row["growth_state"]) == norm(patient.get("growth_mode", "")) else 0
+    fit += 10 if patient.get("growth_mode") not in ("Любой", "Any") and norm(row["growth_state"]) == norm(patient.get("growth_mode", "")) else 0
     fit += 12 if norm(row["antibiotic"]) in patient.get("sensitive", []) else 0
     
     # Штрафы за резистентность

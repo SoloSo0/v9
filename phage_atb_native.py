@@ -131,8 +131,237 @@ class AutocompleteEntry(ctk.CTkEntry):
             return "break"
 
 class PhageATBApp(ctk.CTk):
+
+    def _init_translations(self):
+        self.current_lang = "RU"
+        self.i18n_dict = {
+            "Профессиональная нативная система подбора фаготерапии v9": "Professional Native Phage Therapy Matching System v9",
+            "Статей": "Articles",
+            "Экспериментов": "Experiments",
+            "Терапий": "Therapies",
+            "Измерений": "Measurements",
+            "Интерпретаций": "Interpretations",
+            "Подбор (Ranking)": "Ranking",
+            "Аудит": "Audit",
+            "Консенсус": "Consensus",
+            "Аналитика": "Analytics",
+            "Калькулятор": "Calculator",
+            "Ввод данных": "Data Input",
+            "Импорт / Миграция": "Import / Migration",
+            "О программе": "About",
+            "Справка": "Help",
+            "Возбудитель:": "Pathogen:",
+            "Growth state:": "Growth state:",
+            "Топ-N:": "Top-N:",
+            "Sensitive АТБ:": "Sensitive ATB:",
+            "Resistant АТБ:": "Resistant ATB:",
+            "Только validated/curated": "Only validated/curated",
+            "Приоритет MDR": "MDR Priority",
+            "Только активные пары": "Active pairs only",
+            "РАССЧИТАТЬ RANKING v9": "CALCULATE RANKING v9",
+            "ЭКСПОРТ EXCEL": "EXPORT EXCEL",
+            "Фаг": "Phage",
+            "Антибиотик": "Antibiotic",
+            "АТБ": "ATB",
+            "Итог": "Score",
+            "Релев.": "Relevance",
+            "Эффект": "Effect",
+            "Доказ.": "Evidence",
+            "Доверие": "Confidence",
+            "Тип": "Type",
+            "Возбудитель": "Pathogen",
+            "Сред. Синергия": "Mean Synergy",
+            "Макс. Доказ.": "Max Evidence",
+            "Статус": "Status",
+            "Управление данными": "Data Management",
+            "Fetch DOI": "Fetch DOI",
+            "Сохранить запись": "Save Record",
+            "Обновить таблицу аудита": "Refresh Audit",
+            "Источник": "Source",
+            "Обновить аналитику": "Refresh Analytics",
+            "Нажмите кнопку для генерации графиков": "Click to generate charts",
+            "Нет данных для отображения": "No data to display",
+            "Калькулятор Бактериофагов": "Phage Calculator",
+            "Рассчитать фаг": "Calculate Phage",
+            "Нужный объем фага: ---": "Required phage vol: ---",
+            "Калькулятор Антибиотиков": "Antibiotic Calculator",
+            "Рассчитать АТБ": "Calculate ATB",
+            "Нужный объем АТБ: ---": "Required ATB vol: ---",
+            "Импорт CSV (Legacy)": "Import CSV (Legacy)",
+            "Миграция из старых БД (v6-v8)": "Migrate old DBs (v6-v8)",
+            "Выберите CSV": "Select CSV",
+            "Выберите SQLite БД": "Select SQLite DB",
+            "Поиск (DOI, Патоген, АТБ):": "Search (DOI, Pathogen, ATB):",
+            "DOI / PMID:": "DOI / PMID:",
+            "Заметки:": "Notes:",
+            "Год:": "Year:",
+            "Ссылка:": "Reference:",
+            "Титр фага (PFU/ml):": "Phage titer (PFU/ml):",
+            "Бактериальная нагрузка (CFU/ml):": "Bacterial load (CFU/ml):",
+            "Объем (ml):": "Volume (ml):",
+            "Целевой MOI:": "Target MOI:",
+            "Исходная концентрация (C1):": "Initial concentration (C1):",
+            "Целевая концентрация (C2):": "Target concentration (C2):",
+            "Целевой объем (V2, ml):": "Target volume (V2, ml):",
+            "Получить данные": "Get Data",
+            "Сделать бэкап БД": "Backup DB",
+            "Статус бэкапа:": "Backup Status:",
+            "Результат:": "Result:",
+            "Расчет дозировки фагов (MOI)": "Phage dosage calculation (MOI)",
+            "Расчет разведения антибиотика (C1V1 = C2V2)": "Antibiotic dilution calculation (C1V1 = C2V2)",
+            "Добавить запись (PubMed)": "Add record (PubMed)",
+            "Найти": "Search",
+            "Поиск": "Search",
+            "Нужный объем фага: ": "Required phage vol: ",
+            "Нужный объем АТБ: ": "Required ATB vol: ",
+            "Проверьте корректность введенных чисел (используйте 1e8 для экспоненциальной записи)": "Check the entered numbers (use 1e8 for scientific notation)",
+            "Проверьте корректность введенных чисел": "Check the entered numbers",
+            "Ошибка": "Error",
+            "Информация": "Information",
+            "Успех": "Success",
+            "Экспорт": "Export",
+            "Отчет успешно сохранен!": "Report successfully saved!",
+            "Не удалось сохранить отчет.": "Failed to save report.",
+            "Нет данных для анализа": "No data for analysis",
+            "Сбой при загрузке: ": "Failed to load: ",
+            "Успешно импортировано: ": "Successfully imported: ",
+            "записей": "records",
+            "Ошибка импорта: ": "Import error: ",
+            "Завершено! Перенесено ": "Done! Migrated ",
+            " записей.": " records.",
+            "Импорт": "Import",
+            "Миграция": "Migration",
+            "Старые БД не найдены": "Old DBs not found",
+            "Импортировать CSV (Legacy)": "Import CSV (Legacy)",
+            "Источник / Reference:": "Source / Reference:",
+            "Фаг / Коктейль:": "Phage / Cocktail:",
+            "Антибиотик:": "Antibiotic:",
+            "Synergy Score (0-100):": "Synergy Score (0-100):",
+            "Заметки / Абстракт:": "Notes / Abstract:",
+            "Любой": "Any",
+            "Ввод": "Input",
+            "Вырезать": "Cut",
+            "Копировать": "Copy",
+            "Вставить": "Paste",
+            "Выделить всё": "Select All",
+            "Версия ": "Version ",
+            "Последние изменения:\n": "Recent changes:\n",
+            "Возбудитель:": "Pathogen:",
+            "Sensitive АТБ:": "Sensitive ATB:",
+            "Resistant АТБ:": "Resistant ATB:",
+            "Только validated/curated": "Only validated/curated",
+            "Приоритет MDR": "MDR Priority",
+            "Только активные пары": "Only active pairs",
+            "РАССЧИТАТЬ RANKING v9": "CALCULATE RANKING v9",
+            "ЭКСПОРТ EXCEL": "EXPORT EXCEL",
+            "Фаг": "Phage",
+            "Антибиотик": "Antibiotic",
+            "Итог": "Score",
+            "Релев.": "Relev.",
+            "Эффект": "Effect",
+            "Доказ.": "Evid.",
+            "Доверие": "Conf.",
+            "Тип": "Type",
+            "АТБ": "ATB",
+            "Источник": "Source",
+            "Возбудитель": "Pathogen",
+            "Статус": "Status",
+            "Обновить таблицу аудита": "Refresh Audit Table",
+            "Только консенсусы (N>=2)": "Only consensuses (N>=2)",
+            "РАССЧИТАТЬ КОНСЕНСУС": "CALCULATE CONSENSUS",
+            "Статей": "Articles",
+            "Сред. Синергия": "Avg. Synergy",
+            "Концентрация бактерий (CFU/ml):": "Bacterial concentration (CFU/ml):",
+            "Объем среды (ml):": "Medium volume (ml):",
+            "Концентрация стока фага (PFU/ml):": "Phage stock concentration (PFU/ml):",
+            "Целевая концентрация (µg/ml):": "Target concentration (µg/ml):",
+            "Концентрация стока (mg/ml):": "Stock concentration (mg/ml):",
+            "Нужный объем фага: ---": "Required phage vol: ---",
+            "Нужный объем АТБ: ---": "Required ATB vol: ---",
+            "Инструкция PhageATB Native v9:\n\n1. Подбор (Ranking): Основной экран для поиска синергичных комбинаций.\n   - Используйте фильтры для уточнения поиска.\n   - Итоговый балл (Итог) учитывает эффект, доказательность и качество.\n\n2. Аудит: Проверка всех записей базы на предмет блокирующих проблем.\n\n3. Консенсус: Группировка данных по парам Фаг+АТБ для поиска самого сильного сигнала.\n\n4. Ввод данных: Ручное добавление новых исследований в базу.\n\n5. Импорт: Загрузка данных из CSV шаблона v4.": "PhageATB Native v9 Instructions:\n\n1. Ranking: Main screen to find synergistic combinations.\n   - Use filters to refine your search.\n   - Score takes into account effect, evidence, and quality.\n\n2. Audit: Checking all database records for blocking issues.\n\n3. Consensus: Grouping data by Phage+ATB pairs to find the strongest signal.\n\n4. Data Input: Manually adding new studies to the database.\n\n5. Import: Loading data from v4 CSV template."
+        }
+        self.reverse_dict = {v: k for k, v in self.i18n_dict.items()}
+
+    def tr(self, text):
+        if not isinstance(text, str):
+            return text
+            
+        # Убираем пробелы по краям для безопасного поиска, но сохраняем их при возврате
+        clean_text = text.strip()
+        
+        if self.current_lang == "EN":
+            translated = self.i18n_dict.get(clean_text, clean_text)
+        else:
+            translated = self.reverse_dict.get(clean_text, clean_text)
+            
+        # Восстанавливаем пробелы, если они были (чтобы не сломать отступы в UI)
+        if text.startswith(" "): translated = " " + translated
+        if text.endswith(" "): translated = translated + " "
+        return translated
+
+    def change_language(self, new_lang):
+        if new_lang == self.current_lang:
+            return
+        self.current_lang = new_lang
+        self.update_ui_texts()
+
+    def update_ui_texts(self):
+        # 1. Update Tabview labels
+        if hasattr(self, "tabview"):
+            for tab_name in self.tabview._name_list:
+                try:
+                    btn = self.tabview._segmented_button._buttons_dict[tab_name]
+                    current_text = btn.cget("text")
+                    btn.configure(text=self.tr(current_text))
+                except Exception as e:
+                    pass
+                    
+        # 2. Recursive UI update for texts
+        def walk_and_translate(widget):
+            # Translate text attributes
+            try:
+                if hasattr(widget, "cget"):
+                    # For labels, buttons, checkboxes
+                    if isinstance(widget, (ctk.CTkLabel, ctk.CTkButton, ctk.CTkCheckBox)):
+                        current_text = widget.cget("text")
+                        if current_text:
+                            widget.configure(text=self.tr(current_text))
+                    elif isinstance(widget, ctk.CTkComboBox):
+                        vals = widget.cget("values")
+                        if vals:
+                            widget.configure(values=[self.tr(v) for v in vals])
+                            current_val = widget.get()
+                            widget.set(self.tr(current_val))
+            except Exception:
+                pass
+            
+            # Recursive call
+            try:
+                for child in widget.winfo_children():
+                    walk_and_translate(child)
+            except Exception:
+                pass
+                
+        walk_and_translate(self)
+        
+        # 3. Update Treeview headings explicitly
+        trees = []
+        if hasattr(self, "tree"): trees.append(self.tree)
+        if hasattr(self, "audit_tree"): trees.append(self.audit_tree)
+        if hasattr(self, "cons_tree"): trees.append(self.cons_tree)
+        
+        for tree in trees:
+            try:
+                for col in tree["columns"]:
+                    current_text = tree.heading(col)["text"]
+                    if current_text:
+                        tree.heading(col, text=self.tr(current_text))
+            except Exception:
+                pass
+
     def __init__(self):
         super().__init__()
+        self._init_translations()
 
         # Initialize core
         core.run_schema()
@@ -339,11 +568,11 @@ class PhageATBApp(ctk.CTk):
         # Создаем простое меню через Toplevel или прямое позиционирование (здесь используем меню Tkinter для надежности)
         from tkinter import Menu
         tk_menu = Menu(self, tearoff=0, bg=self.colors["bg_card"], fg=self.colors["text_main"], font=("Segoe UI", 10))
-        tk_menu.add_command(label="Вырезать", command=lambda: self._on_cut(None))
-        tk_menu.add_command(label="Копировать", command=lambda: self._on_copy(None))
-        tk_menu.add_command(label="Вставить", command=lambda: self._on_paste(None))
+        tk_menu.add_command(label=self.tr("Вырезать"), command=lambda: self._on_cut(None))
+        tk_menu.add_command(label=self.tr("Копировать"), command=lambda: self._on_copy(None))
+        tk_menu.add_command(label=self.tr("Вставить"), command=lambda: self._on_paste(None))
         tk_menu.add_separator()
-        tk_menu.add_command(label="Выделить всё", command=lambda: self._on_select_all(None))
+        tk_menu.add_command(label=self.tr("Выделить всё"), command=lambda: self._on_select_all(None))
         
         try:
             tk_menu.tk_popup(event.x_root, event.y_root)
@@ -355,11 +584,13 @@ class PhageATBApp(ctk.CTk):
         self.about_frame = ctk.CTkFrame(self.tab_about, corner_radius=15)
         self.about_frame.pack(padx=20, pady=20, fill="both", expand=True)
         
-        ctk.CTkLabel(self.about_frame, text=f"Версия {core.VERSION}", font=ctk.CTkFont(size=20, weight="bold")).pack(pady=10)
+        ver_text = self.tr('Версия ')
+        ctk.CTkLabel(self.about_frame, text=f"{ver_text}{core.VERSION}", font=ctk.CTkFont(size=20, weight="bold")).pack(pady=10)
         
         changes_text = ctk.CTkTextbox(self.about_frame, width=600, height=300, font=ctk.CTkFont(size=13))
         changes_text.pack(padx=20, pady=10, fill="both", expand=True)
-        changes_text.insert("1.0", f"Последние изменения:\n{core.LAST_CHANGES}")
+        changes_str = self.tr('Последние изменения:\n')
+        changes_text.insert("1.0", f"{changes_str}{core.LAST_CHANGES}")
         changes_text.configure(state="disabled")
 
     def setup_header(self):
@@ -372,6 +603,12 @@ class PhageATBApp(ctk.CTk):
         
         self.subtitle_label = ctk.CTkLabel(self.hero_frame, text="Профессиональная нативная система подбора фаготерапии v9", font=ctk.CTkFont(family="Segoe UI Variable Text", size=14), text_color=self.colors["text_dim"])
         self.subtitle_label.pack(pady=(0, 20))
+        self.lang_var = ctk.StringVar(value="RU")
+        self.lang_toggle = ctk.CTkSegmentedButton(self.hero_frame, values=["RU", "EN"], 
+                                                  variable=self.lang_var, command=self.change_language,
+                                                  corner_radius=8, width=100)
+        self.lang_toggle.place(relx=1.0, rely=0.0, x=-20, y=20, anchor="ne")
+
 
         # KPI frame
         self.kpi_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -522,7 +759,7 @@ class PhageATBApp(ctk.CTk):
         
         self.last_ranking_df = core.ranking_df(patient)
         if self.last_ranking_df.empty:
-            messagebox.showinfo("Ranking", "Нет данных для отображения")
+            messagebox.showinfo(self.tr("Ranking"), self.tr("Нет данных для отображения"))
             self.export_btn.configure(state="disabled")
             return
             
@@ -560,9 +797,9 @@ class PhageATBApp(ctk.CTk):
         path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")])
         if path:
             if core.export_to_excel(self.last_ranking_df.head(int(self.rank_topn.get())), path):
-                messagebox.showinfo("Экспорт", "Отчет успешно сохранен!")
+                messagebox.showinfo(self.tr("Экспорт"), self.tr("Отчет успешно сохранен!"))
             else:
-                messagebox.showerror("Ошибка", "Не удалось сохранить отчет.")
+                messagebox.showerror(self.tr("Ошибка"), self.tr("Не удалось сохранить отчет."))
 
     def setup_audit_tab(self):
         self.tab_audit.grid_columnconfigure(0, weight=1)
@@ -628,7 +865,7 @@ class PhageATBApp(ctk.CTk):
         # Получаем данные из текущего ранжирования (базовый набор)
         df = core.ranking_base_df()
         if df.empty:
-            messagebox.showinfo("Аналитика", "Нет данных для анализа")
+            messagebox.showinfo(self.tr("Аналитика"), self.tr("Нет данных для анализа"))
             return
             
         buf = core.generate_synergy_plot(df)
@@ -738,9 +975,11 @@ class PhageATBApp(ctk.CTk):
             needed_vol_ml = needed_pfu / stock
             needed_vol_mkl = needed_vol_ml * 1000
             
-            self.phage_res_label.configure(text=f"Нужный объем фага: {needed_vol_mkl:.2f} µl")
+            base_text = self.tr('Нужный объем фага: ')
+            self.phage_res_label.configure(text=f"{base_text}{needed_vol_mkl:.2f} µl")
         except Exception as e:
-            messagebox.showerror("Ошибка", "Проверьте корректность введенных чисел (используйте 1e8 для экспоненциальной записи)")
+            err_msg = self.tr('Проверьте корректность введенных чисел (используйте 1e8 для экспоненциальной записи)')
+            messagebox.showerror("Error", err_msg)
 
     def calculate_atb(self):
         try:
@@ -755,9 +994,11 @@ class PhageATBApp(ctk.CTk):
             needed_vol_ml = (target * vol) / (stock * 1000)
             needed_vol_mkl = needed_vol_ml * 1000
             
-            self.atb_res_label.configure(text=f"Нужный объем АТБ: {needed_vol_mkl:.2f} µl")
+            base_text = self.tr('Нужный объем АТБ: ')
+            self.atb_res_label.configure(text=f"{base_text}{needed_vol_mkl:.2f} µl")
         except Exception as e:
-            messagebox.showerror("Ошибка", "Проверьте корректность введенных чисел")
+            err_msg = self.tr('Проверьте корректность введенных чисел')
+            messagebox.showerror("Error", err_msg)
 
     def setup_input_tab(self):
         self.tab_input.grid_columnconfigure(0, weight=1)
@@ -809,12 +1050,12 @@ class PhageATBApp(ctk.CTk):
     def fetch_doi(self):
         doi = self.inputs["ref"].get().strip()
         if not doi:
-            messagebox.showwarning("Ввод", "Введите DOI или PMID")
+            messagebox.showwarning(self.tr("Ввод"), self.tr("Введите DOI или PMID"))
             return
 
         # Валидация DOI/PMID формата
         if not (doi.startswith("10.") or doi.isdigit()):
-            messagebox.showerror("Ошибка", "Некорректный формат DOI (должен начинаться с 10.) или PMID (только цифры)")
+            messagebox.showerror(self.tr("Ошибка"), self.tr("Некорректный формат DOI (должен начинаться с 10.) или PMID (только цифры)"))
             return
 
         # Индикация загрузки
@@ -837,15 +1078,15 @@ class PhageATBApp(ctk.CTk):
                 if metadata.get("notes"):
                     self.inputs["notes"].delete("1.0", "end")
                     self.inputs["notes"].insert("1.0", metadata["notes"])
-                messagebox.showinfo("PubMed", "Данные успешно получены!")
+                messagebox.showinfo("PubMed", self.tr("Данные успешно получены!"))
             else:
                 self.inputs["ref"].insert(0, original_text)
-                messagebox.showwarning("PubMed", "Не удалось найти данные по этому идентификатору.")
+                messagebox.showwarning("PubMed", self.tr("Не удалось найти данные по этому идентификатору."))
         except Exception as e:
             self.inputs["ref"].configure(state="normal")
             self.inputs["ref"].delete(0, 'end')
             self.inputs["ref"].insert(0, original_text)
-            messagebox.showerror("Ошибка", f"Сбой при загрузке: {e}")
+            messagebox.showerror(self.tr("Ошибка"), f"{self.tr('Сбой при загрузке: ')}{e}")
 
     def save_input(self):
         try:
@@ -858,10 +1099,10 @@ class PhageATBApp(ctk.CTk):
             ther_id = core.create_therapy(self.inputs["phage"].get(), self.inputs["atb"].get(), "", "", 1, 5, 0)
             core.create_interpretation(exp_id, ther_id, 3, 3, float(self.inputs["score"].get() or 50), "PAS", 0, 0, 1, 1, 0, "Manual input")
             
-            messagebox.showinfo("Успех", "Запись сохранена!")
+            messagebox.showinfo(self.tr("Успех"), self.tr("Запись сохранена!"))
             self.refresh_kpis()
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось сохранить: {e}")
+            messagebox.showerror(self.tr("Ошибка"), f"{self.tr('Не удалось сохранить: ')}{e}")
 
     def setup_import_tab(self):
         self.tab_import.grid_columnconfigure(0, weight=1)
@@ -883,20 +1124,20 @@ class PhageATBApp(ctk.CTk):
         if path:
             try:
                 stats = core.import_legacy_csv(path)
-                messagebox.showinfo("Импорт", f"Успешно импортировано: {stats['interpretations']} записей")
+                messagebox.showinfo(self.tr("Импорт"), f"{self.tr('Успешно импортировано: ')}{stats['interpretations']} {self.tr('записей')}")
                 self.refresh_kpis()
             except Exception as e:
-                messagebox.showerror("Ошибка", f"Ошибка импорта: {e}")
+                messagebox.showerror(self.tr("Ошибка"), f"{self.tr('Ошибка импорта: ')}{e}")
 
     def run_migration(self):
         prev = core.previous_db()
         if prev:
             stats = core.migrate_from_previous_db(prev)
-            messagebox.showinfo("Миграция", f"Завершено! Перенесено {stats['interpretations']} записей.")
+            messagebox.showinfo(self.tr("Миграция"), f"{self.tr('Завершено! Перенесено ')}{stats['interpretations']}{self.tr(' записей.')}")
             self.refresh_kpis()
 
     def setup_help_tab(self):
-        text = (
+        text = self.tr(
             "Инструкция PhageATB Native v9:\n\n"
             "1. Подбор (Ranking): Основной экран для поиска синергичных комбинаций.\n"
             "   - Используйте фильтры для уточнения поиска.\n"
