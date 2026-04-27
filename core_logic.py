@@ -15,15 +15,14 @@ import logging
 import traceback
 
 # --- Configuration & Paths ---
-APP_TITLE = "PhageATB Pro v9.7.0"
-VERSION = "9.7.0"
+APP_TITLE = "PhageATB Pro v9.8.3"
+VERSION = "9.8.3"
 LAST_CHANGES = """
-Версия 9.7.0 (Global Search Update):
-- Внедрен полнотекстовый поиск (FTS5) по статьям и заметкам.
-- Добавлена функция глобального поиска по ключевым словам.
-- Оптимизирована синхронизация между поисковыми индексами и основной БД.
+Версия 9.8.3 (Soft Mode Visual Fix):
+- Принудительное переопределение цвета на красный для резистентных вариантов.
+- Добавлена иконка ⚠️ и пометка (R) к названию антибиотика для максимальной наглядности.
 
-Версия 9.6.0 (Database Optimization):
+Версия 9.8.2 (Soft Mode Fix):
 """
 
 if getattr(sys, 'frozen', False):
@@ -549,18 +548,30 @@ def score_row(row: pd.Series, patient: Dict) -> float:
     fit += 20 if norm(row["pathogen"]) == norm(patient.get("pathogen", "")) else 0
     fit += 10 if patient.get("growth_mode") != "Любой" and norm(row["growth_state"]) == norm(patient.get("growth_mode", "")) else 0
     fit += 12 if norm(row["antibiotic"]) in patient.get("sensitive", []) else 0
-    # Strict: огромный штраф (если не отфильтровано раньше), Soft: умеренный штраф 18
-    if norm(row["antibiotic"]) in patient.get("resistant", []):
-        fit -= 100 if patient.get("resistant_mode") == "strict" else 18
+    
+    # Штрафы за резистентность
+    is_resistant = norm(row["antibiotic"]) in patient.get("resistant", [])
+    if is_resistant:
+        # Режим Strict должен был отфильтровать это раньше, но на всякий случай оставляем штраф
+        fit -= 150 if patient.get("resistant_mode") == "strict" else 45  # Увеличиваем штраф в Soft mode до 45
     
     fit += 8 if patient.get("wants_mdr") and as_num(row["mdr_relevant"]) > 0 else 0
     fit += 10 if patient.get("wants_xdr") and as_num(row["xdr_relevant"]) > 0 else 0
     fit += as_num(row["phage_active"]) * 8 + as_num(row["antibiotic_active"]) * 7 + as_num(row["direct_isolate_match"]) * 12 + as_num(row["species_match"]) * 6
+    
     effect = as_num(row["synergy_score"]) * 0.3 + min(as_num(row["mic_fold_reduction"]), 16) * 2.2 + min(as_num(row["log_reduction"]), 6) * 4.5
     evidence_component = as_num(row["evidence_level"]) * 8 + as_num(row["quality_score"]) * 5 + min(as_num(row["n_strains_tested"]), 40) * 0.7
     cocktail_component = min(as_num(row["phage_cocktail_size"]), 6) * 1.5 + min(as_num(row["host_range_score"]), 10) * 1.8
     penalty = as_num(row["toxicity_signal"]) * 8 + max(0, 60 - confidence_score(row)) * 0.35
-    return round(evidence_component * 0.26 + effect * 0.28 + fit * 0.30 + cocktail_component * 0.08 + confidence_score(row) * 0.08 - penalty, 2)
+    
+    # Итоговый балл
+    final_score = evidence_component * 0.26 + effect * 0.28 + fit * 0.30 + cocktail_component * 0.08 + confidence_score(row) * 0.08 - penalty
+    
+    # Дополнительный "научный" штраф: если АТБ резистентен, итоговый балл не может быть выше 40 (красная зона)
+    if is_resistant and patient.get("resistant_mode") == "soft":
+        final_score = min(final_score, 40.0)
+        
+    return round(max(0.0, final_score), 2)
 
 def explain_row(row: pd.Series) -> str:
     parts: List[str] = []

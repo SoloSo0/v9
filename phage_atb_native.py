@@ -455,6 +455,11 @@ class PhageATBApp(ctk.CTk):
         self.run_btn = ctk.CTkButton(self.filters_frame, text="РАССЧИТАТЬ RANKING v9", command=self.run_ranking, font=("Segoe UI Variable Display", 12, "bold"), corner_radius=8, fg_color=self.colors["accent"], hover_color="#005a9e", text_color="#000000")
         self.run_btn.grid(row=2, column=4, padx=10, pady=10, sticky="ew")
 
+        # Добавляем подсказки для фильтров
+        self.create_tooltip(self.rank_res_mode, "Strict: Исключает АТБ с резистентностью.\nSoft: Снижает их рейтинг на 18 баллов.")
+        self.create_tooltip(self.rank_active, "Фильтрует только те пары Фаг-АТБ,\nкоторые показали активность в исследованиях.")
+        self.create_tooltip(self.rank_mdr, "Повышает приоритет для комбинаций,\nэффективных против MDR штаммов.")
+
         self.export_btn = ctk.CTkButton(self.filters_frame, text="ЭКСПОРТ EXCEL", command=self.export_ranking, font=("Segoe UI Variable Display", 12, "bold"), corner_radius=8, fg_color=self.colors["success"], hover_color="#2d7a26", text_color="#000000")
         self.export_btn.grid(row=2, column=5, padx=10, pady=10, sticky="ew")
         self.export_btn.configure(state="disabled")
@@ -477,7 +482,21 @@ class PhageATBApp(ctk.CTk):
         self.tree.column("phage", width=180)
         self.tree.column("atb", width=180)
         
+        # Подсказки для колонок таблицы
+        self.create_tooltip(self.table_frame, "Итог: Итоговый балл (0-100)\nДоказ.: Уровень доказательности (1-5)\nДоверие: Статистическая достоверность")
+
         self.tree.pack(side="left", expand=True, fill="both")
+        
+        # Настройка тегов для цветового кодирования уровней доказательности
+        self.tree.tag_configure("ev_high", foreground="#2ecc71")  # Зеленый (4-5)
+        self.tree.tag_configure("ev_med", foreground="#f1c40f")   # Желтый (3)
+        self.tree.tag_configure("ev_low", foreground="#e67e22")   # Оранжевый (1-2)
+        self.tree.tag_configure("ev_none", foreground="#95a5a6")  # Серый (0)
+        
+        # Тег для предупреждения о резистентности (Soft mode)
+        # ВАЖНО: Теги в Treeview применяются в порядке их конфигурации. 
+        # Последний сконфигурированный тег имеет приоритет.
+        self.tree.tag_configure("res_warn", foreground="#e74c3c", font=("Segoe UI Variable Text", 10, "italic"))
         
         scrollbar = ctk.CTkScrollbar(self.table_frame, command=self.tree.yview)
         scrollbar.pack(side="right", fill="y")
@@ -509,12 +528,27 @@ class PhageATBApp(ctk.CTk):
             
         self.export_btn.configure(state="normal")
         for i, row in self.last_ranking_df.head(int(self.rank_topn.get())).iterrows():
-            tag = "even" if i % 2 == 0 else "odd"
+            ev_score = row["evidence_score"]
+            if ev_score >= 4: ev_tag = "ev_high"
+            elif ev_score >= 3: ev_tag = "ev_med"
+            elif ev_score >= 1: ev_tag = "ev_low"
+            else: ev_tag = "ev_none"
+            
+            row_tag = "even" if i % 2 == 0 else "odd"
+            
+            # Если это резистентный вариант в Soft mode, переопределяем теги
+            if row.get("resistant_override"):
+                tags = (row_tag, "res_warn")
+                atb_name = f"⚠️ {row['antibiotic']} (R)"
+            else:
+                tags = (row_tag, ev_tag)
+                atb_name = row["atb"] if "atb" in row else row["antibiotic"]
+            
             self.tree.insert("", "end", values=(
-                row["phage"], row["atb"] if "atb" in row else row["antibiotic"], row["final_score"],
+                row["phage"], atb_name, row["final_score"],
                 row["relevance_score"], row["effect_score"], row["evidence_score"],
                 row["confidence_score"], row["synergy_prediction"]
-            ), tags=(tag,))
+            ), tags=tags)
         
         self.tree.tag_configure("even", background=self.tree_tag_colors["even"])
         self.tree.tag_configure("odd", background=self.tree_tag_colors["odd"])
@@ -660,6 +694,38 @@ class PhageATBApp(ctk.CTk):
         
         ctk.CTkButton(atb_frame, text="Рассчитать АТБ", command=self.calculate_atb, fg_color=self.colors["success"], text_color="#000000").pack(pady=10)
 
+    def create_tooltip(self, widget, text):
+        """Создает простое всплывающее окно подсказки для виджета"""
+        def enter(event):
+            self.tooltip = tk.Toplevel(self)
+            self.tooltip.wm_overrideredirect(True)
+            self.tooltip.wm_geometry(f"+{event.x_root+15}+{event.y_root+10}")
+            label = tk.Label(self.tooltip, text=text, justify='left',
+                             background="#2c3e50", foreground="#ecf0f1",
+                             relief='flat', borderwidth=0, padx=10, pady=5,
+                             font=("Segoe UI Variable Text", 9))
+            label.pack()
+        def leave(event):
+            if hasattr(self, "tooltip"):
+                try:
+                    self.tooltip.destroy()
+                except:
+                    pass
+        
+        # Некоторые виджеты CTk (например, SegmentedButton) не поддерживают прямой bind
+        # Пытаемся привязаться к самому виджету или его внутренним компонентам
+        try:
+            widget.bind("<Enter>", enter)
+            widget.bind("<Leave>", leave)
+        except Exception:
+            # Если прямой bind не сработал (NotImplementedError), пробуем через canvas или пропускаем
+            try:
+                if hasattr(widget, "_canvas"):
+                    widget._canvas.bind("<Enter>", enter)
+                    widget._canvas.bind("<Leave>", leave)
+            except:
+                pass
+
     def calculate_phage(self):
         try:
             cfu = float(self.calc_phage_entries["cfu"].get())
@@ -734,31 +800,52 @@ class PhageATBApp(ctk.CTk):
             self.inputs[key] = entry
             
             if key == "ref":
-                ctk.CTkButton(frame, text="Fetch DOI", width=80, command=self.fetch_doi, fg_color=self.colors["accent"]).pack(side="left", padx=5)
+                btn = ctk.CTkButton(frame, text="Fetch DOI", width=80, command=self.fetch_doi, fg_color=self.colors["accent"])
+                btn.pack(side="left", padx=5)
+                self.create_tooltip(btn, "Автоматически загружает данные статьи по DOI\n(требуется интернет)")
             
         ctk.CTkButton(self.input_form, text="Сохранить запись", command=self.save_input, fg_color="#10b981").grid(row=len(fields), column=0, columnspan=2, pady=20)
 
     def fetch_doi(self):
         doi = self.inputs["ref"].get().strip()
         if not doi:
-            messagebox.showwarning("PubMed", "Введите DOI в поле источника")
+            messagebox.showwarning("Ввод", "Введите DOI или PMID")
             return
+
+        # Валидация DOI/PMID формата
+        if not (doi.startswith("10.") or doi.isdigit()):
+            messagebox.showerror("Ошибка", "Некорректный формат DOI (должен начинаться с 10.) или PMID (только цифры)")
+            return
+
+        # Индикация загрузки
+        original_text = self.inputs["ref"].get()
+        self.inputs["ref"].delete(0, 'end')
+        self.inputs["ref"].insert(0, "Загрузка данных...")
+        self.inputs["ref"].configure(state="disabled")
+        self.update_idletasks()
+        
+        try:
+            metadata = core.fetch_pubmed_metadata(doi)
+            self.inputs["ref"].configure(state="normal")
+            self.inputs["ref"].delete(0, 'end')
             
-        metadata = core.fetch_pubmed_metadata(doi)
-        if metadata and metadata.get("reference"):
-            self.inputs["ref"].delete(0, "end")
-            self.inputs["ref"].insert(0, metadata["reference"])
-            self.inputs["year"].delete(0, "end")
-            self.inputs["year"].insert(0, str(metadata["year"]))
-            
-            # Добавляем абстракт в заметки, если он есть
-            if metadata.get("abstract"):
-                self.inputs["notes"].delete("1.0", "end")
-                self.inputs["notes"].insert("1.0", metadata["abstract"])
-                
-            messagebox.showinfo("PubMed", "Данные успешно получены!")
-        else:
-            messagebox.showerror("PubMed", "Не удалось найти статью по этому DOI")
+            if metadata and metadata.get("reference"):
+                self.inputs["ref"].insert(0, metadata["reference"])
+                if metadata.get("year"):
+                    self.inputs["year"].delete(0, 'end')
+                    self.inputs["year"].insert(0, str(metadata["year"]))
+                if metadata.get("notes"):
+                    self.inputs["notes"].delete("1.0", "end")
+                    self.inputs["notes"].insert("1.0", metadata["notes"])
+                messagebox.showinfo("PubMed", "Данные успешно получены!")
+            else:
+                self.inputs["ref"].insert(0, original_text)
+                messagebox.showwarning("PubMed", "Не удалось найти данные по этому идентификатору.")
+        except Exception as e:
+            self.inputs["ref"].configure(state="normal")
+            self.inputs["ref"].delete(0, 'end')
+            self.inputs["ref"].insert(0, original_text)
+            messagebox.showerror("Ошибка", f"Сбой при загрузке: {e}")
 
     def save_input(self):
         try:
